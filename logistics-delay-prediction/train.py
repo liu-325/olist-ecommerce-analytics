@@ -6,7 +6,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_auc_score, average_precision_score
 
-DATA = "data/olist"
+DATA = "data"
 orders = pd.read_csv(f"{DATA}/olist_orders_dataset.csv")
 customers = pd.read_csv(f"{DATA}/olist_customers_dataset.csv")
 payments = pd.read_csv(f"{DATA}/olist_order_payments_dataset.csv")
@@ -19,6 +19,8 @@ for c in ["order_purchase_timestamp","order_delivered_customer_date","order_esti
     orders[c] = pd.to_datetime(orders[c], errors="coerce")
 
 df = orders[(orders.order_status=="delivered") & orders.order_delivered_customer_date.notna() & orders.order_estimated_delivery_date.notna()].copy()
+# df.head()
+# df.describe()
 df["late"] = (df.order_delivered_customer_date.dt.normalize() > df.order_estimated_delivery_date.dt.normalize()).astype(int)
 df["est_window"] = (df.order_estimated_delivery_date - df.order_purchase_timestamp).dt.days
 
@@ -59,11 +61,13 @@ df["freight_ratio"] = df.total_freight / (df.total_price + 1)
 features = ["order_value","installments","item_count","product_count","seller_count","total_price","total_freight","avg_weight","avg_length","avg_height","avg_width","est_window","hour","weekday","month","seller_late_rate","seller_prior_count","seller_state_n","same_state_share","freight_ratio"]
 cats = ["payment_type","category","customer_state","seller_state"]
 
+# 一开始随机切的，后来想了想不行——预测未来不能用未来数据
 cut = pd.Timestamp("2018-04-01")
 train = df[df.order_purchase_timestamp < cut]
 test = df[df.order_purchase_timestamp >= cut]
 print(train.shape, test.shape, test.late.mean())
 
+# product_weight_g 有几个空值，量小，先中位数填了
 for c in features:
     train[c] = train[c].fillna(train[c].median())
     test[c] = test[c].fillna(train[c].median())
@@ -79,3 +83,5 @@ top = prob >= np.quantile(prob, .8)
 print("auc", roc_auc_score(test.late, prob))
 print("pr_auc", average_precision_score(test.late, prob))
 print("top20_rate", test.late[top].mean(), "lift", test.late[top].mean()/test.late.mean())
+
+# XGBoost 这边过拟合了，train 0.9 测试 0.7，算了用逻辑回归
